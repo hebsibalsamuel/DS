@@ -1,4 +1,5 @@
 // optimised option without sorting
+// different object usage *******
 var singleNumber2 = function(nums) {
 	let obj ={}
 	for(num of nums){
