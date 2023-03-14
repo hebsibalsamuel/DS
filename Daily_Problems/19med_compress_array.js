@@ -1,4 +1,22 @@
+
+var compress1 = function(chars){
+	var arr=[], count=1;
+    //if(chars.length===1) return 1;
+    for(var i=0; i< chars.length; i++){
+        if(!arr.includes(chars[i])){arr.push(chars[i])}
+        if(chars[i] != chars[i+1]){
+            arr.push(count);
+          count =1;
+        }
+        if(chars[i]==chars[i+1]){
+            count++;
+        }
+    }
+    return arr.length;
+}
+console.log(compress1(arr))
 // 2 pointer approach
+
 var compress = function (chars) {
 	let pointer1 = 0
 	let pointer2 = 1
@@ -29,9 +47,9 @@ var compress = function (chars) {
 };
 let arr =
 	// ["a"]
-	['a','a']
+	// ['a','a']
 	//  ["a", "b", "b", "b", "b", "b", "c", "c"]
-// ["a", "b", "b", "b", "b", "b", "b", "b", "b", "b", "b", "b", "b"]
+["a", "b", "b", "b", "b", "b", "b", "b", "b", "b", "b", "b", "b"]
 // ["a","a","b","b","c"]
 
-console.log(compress(arr))
+// console.log(compress(arr))
