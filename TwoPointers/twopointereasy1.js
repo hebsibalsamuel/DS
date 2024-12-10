@@ -13,9 +13,7 @@
 //     }
 // }
 
-function reduceArray(arr,n)
-{
-
+function reduceArray(arr, n) {
 	let j = 0;
 	for (let i = 0; i < n; i++) {
 
@@ -25,7 +23,7 @@ function reduceArray(arr,n)
 			continue;
 
 
-		else {  
+		else {
 			arr[j] = arr[i];
 			j++;
 		}
@@ -33,11 +31,11 @@ function reduceArray(arr,n)
 
 	for (let i = 0; i < j; i++) {
 		console.log(arr[i]);
-    }
+	}
 
 }
 
-let arr = [  1,2,2,3,3,3,4,4,6];
+let arr = [1, 2, 2, 3, 3, 3, 4, 4, 6];
 
 let n = arr.length;
 

@@ -1,0 +1,24 @@
+{
+  "name": "ds",
+  "version": "1.0.0",
+  "description": "Install live-server npm package Run it Open Terminal and run live-server command. Open debugger and in config.json used the same domain",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hebsibalsamuel/DS.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/hebsibalsamuel/DS/issues"
+  },
+  "homepage": "https://github.com/hebsibalsamuel/DS#readme",
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "crypto": "^1.0.1",
+    "express": "^4.18.3"
+  }
+}

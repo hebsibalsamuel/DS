@@ -1,16 +1,35 @@
-// const memoize = (func) => {
-//     // declaring our local memory to store the result for future execution
-//     let cache = {}; 
-//     return function() {
-//         // The arguments are the parameters for the func
-//         let key = JSON.stringify(arguments); 
-//         if (cache[key]) {
-//             return cache[key]; // return if the cache contians the reuslt
-//         } else { 
-//             // if not do the operation store it in cache and return it.
-//             let val = func.apply(this, arguments); 
-//             cache[key] = val;
-//             return val;
-//         }
-//     };
-// }
+// Define a memoize function that takes a function as input
+function memoize(func) {
+    // Create an empty cache object to store results
+    var cache = {};
+
+    // Return a new function that will perform memoization
+    return function () {
+        // Convert arguments object into a string to use as cache key
+        var argsKey = JSON.stringify(arguments);
+
+        // Check if the result for given arguments exists in the cache
+        if (!cache[argsKey]) {
+            // If result doesn't exist, call the original function
+            cache[argsKey] = func.apply(this, arguments);
+        }
+
+        // Return the cached result
+        return cache[argsKey];
+    };
+}
+
+// Define a function to be memoized
+function fibonacci(n) {
+    if (n <= 1) {
+        return n;
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+// Memoize the fibonacci function
+var memoizedFibonacci = memoize(fibonacci);
+
+// Call the memoized function
+console.log(memoizedFibonacci(10)); // Output: 55 (calculated)
+console.log(memoizedFibonacci(10)); // Output: 55 (cached)

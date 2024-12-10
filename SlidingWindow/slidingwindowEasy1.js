@@ -26,10 +26,42 @@ var countGoodSubstrings = function (s) {
         if (obj[s[strstart]] === 0)
             delete obj[s[strstart]]
         strstart++;
-        obj[s[strend]] = (obj[s[strend]] || 0) + 1     
+        obj[s[strend]] = (obj[s[strend]] || 0) + 1
 
     }
     return Output;
 
 };
+console.log(countGoodSubstrings('aababcabc'))
+
+//easy approach
+var countGoodSubstrings = function (s) {
+    let p1 = 0
+    let p2 = 0
+    const strlength = 3
+    let goodStrings = 0
+    let obj = {}
+    let tempStr = ''
+    while (p2 < s.length) {
+        obj[s[p2]] = (obj[s[p2]] || 0) + 1
+        tempStr = tempStr + s[p2]
+        if (obj[s[p2]] !== 1) {
+            while (obj[s[p2]] > 1) {
+                obj[s[p1]] = obj[s[p1]] - 1
+                if (obj[s[p1]] === 0) delete obj[s[p1]]
+                p1++
+                tempStr = tempStr.substring(1)
+            }
+        }
+        if (tempStr.length === strlength) {
+            goodStrings += 1
+        }
+        p2++
+
+    }
+    console.log(goodStrings)
+    return goodStrings
+
+};
+console.log(countGoodSubstrings('xyzzaz'))
 console.log(countGoodSubstrings('aababcabc'))

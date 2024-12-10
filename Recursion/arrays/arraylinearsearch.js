@@ -39,7 +39,8 @@ function helperAll(arr, target, i, res) {
 function linearSearchAll1(arr, target) {
     return helperAll1(arr, target, 0)
 }
-
+//when a variable in created in body new value is created for every function, we need to pass it with
+//the return value to the top calls to preserve it
 function helperAll1(arr, target, i) {
     let res = []
     if (i == arr.length) {
@@ -47,7 +48,11 @@ function helperAll1(arr, target, i) {
     }
     if (arr[i] == target) {
         res.push(i)
-        return [...res,...helperAll1(arr, target, i + 1)]
+        //holds the return value from bottom calls
+        let newResult = helperAll1(arr, target, i + 1)
+        // returning the value of both previous calls and current value
+        return [...res, ...newResult]
+        // return [...res, ...helperAll1(arr, target, i + 1)]
     }
     else {
         return helperAll1(arr, target, i + 1)

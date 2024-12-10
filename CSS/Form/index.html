@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="./style.css" rel="stylesheet" />
+    <title>Form</title>
+
+</head>
+
+<body>
+    <form id="formWrapper">
+        <fieldset>
+            <legend>Basic Details</legend>
+            <div class="fieldWrapper">
+                <label class='labelField' for="name">Name</label>
+                <!-- Aria aria-describedby and aria-live aria-label help screen readers -->
+                <input class='input' type='text' id="name" value='' placeholder="Name" required
+                    aria-describedby="nameError" />
+                <!-- <span id="nameError" class="error" role="alert" aria-live="assertive"></span> -->
+            </div>
+            <div class="fieldWrapper">
+                <label class='labelField' for="email">Email</label>
+                <input class='input' type='email' id="email" value='' placeholder="Email" required />
+                <span class="tooltiptext">Enter a valid email address</span>
+
+            </div>
+            <div class="fieldWrapper">
+                <label class='labelField' for="password">Password</label>
+                <input class='input' type='password' id="password" value autocomplete="on" placeholder="Password"
+                    required />
+
+            </div>
+        </fieldset>
+        <!-- name attr helps in grouping -->
+        <fieldset>
+            <legend>Additional Details</legend>
+            <div class="fieldWrapper">
+                <label class='labelField' for="male">Male</label>
+                <input class='input' type='radio' id="male" value='Male' name="gender">
+                <label class='labelField' for="female">Female</label>
+                <input class='input' type='radio' id="female" value='Female' name="gender">
+            </div>
+            <div class="fieldWrapper">
+                <label class='labelField' for="country">Select a country</label>
+                <select class='input' name="country" id="country" placeholder="country">
+                    <option value="india">India</option>
+                    <option value="pakistan">Pakistan</option>
+                    <option value="ireland">Ireland</option>
+                    <option value="japan">Japan</option>
+                </select>
+            </div>
+        </fieldset>
+        <button id="formSubmit">SUBMIT</button>
+    </form>
+    <div id="outputWrapper">
+
+    </div>
+
+</body>
+<script src="./index.js"></script>
+
+</html>

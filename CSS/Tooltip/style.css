@@ -1,0 +1,54 @@
+/* https://www.youtube.com/watch?v=ujlpzTyJp-M */
+/* Tutorial on tooltip */
+.imageWrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    box-sizing: border-box;
+}
+
+.tooltipWrapper {
+    position: relative;
+}
+
+.image {
+    width: 200px;
+    height: 200px;
+
+}
+
+.tooltip {
+    position: absolute;
+    padding: 10px;
+    background: lightgray;
+    border-radius: 10px;
+    margin: 10px;
+    opacity: 0;
+    /* transition on display property didn't work */
+    transition: 0.5s opacity;
+}
+
+.tooltipLeft {
+    right: 100%;
+    top: 40%;
+}
+
+.tooltipRight {
+    left: 100%;
+    top: 40%;
+}
+
+.tooltipTop {
+    left: 30%;
+    bottom: 100%;
+}
+
+.tooltipBottom {
+    left: 30%;
+    top: 100%;
+}
+
+.image:hover+.tooltip {
+    opacity: 1;
+}
