@@ -1,13 +1,1478 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-    <script src="./index.js"></script>
+    <title>Snow Plow</title>
+    <!-- One trust consent script -->
+    <!-- <script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js"
+    type="text/javascript" charset="UTF-8"
+    data-domain-script="3c987728-b6cb-466b-9476-68bb7f4798c5" ></script> -->
+
+    <!-- As per doc: https://docs.google.com/document/d/1A53SMQ_Ms-ct9sXC5l5fk1Bf91kM4SHp8WPfYujms3E/edit?tab=t.0 -->
+    <script type="text/javascript">
+        // ====== Fides helper functions =======
+        const fidesOtKeyEquivalencies = [
+            ['essential', 'C0001'],
+            ['analytics', 'C0002'],
+            ['functional', 'C0003'],
+            ['sales_sharing_targeted_advertising', 'C0004'],
+            ['social_media', 'C0005'],
+            ['audience_measurement', 'C0009'],
+        ];
+
+        const bannerComponents = ['tcf_banner', 'banner'];
+
+        const toReverseEquivalency = ([key, value]) => [value, key];
+
+        const wasFidesBannerShownGtmEvent = (event) => event?.type === 'FidesUIShown' && bannerComponents.includes(event.detail.extraDetails.servingComponent);
+
+        const fidesExtractConsentGroupsAsOtArray = () => {
+            const consented = (consentKey) => {
+                let keys = consentKey;
+                if (typeof consentKey === 'string') {
+                    keys = [consentKey];
+                }
+
+                const fidesInitialized = window.Fides?.initialized ?? false;
+                const consentFlagIsTrue = (value) => value;
+                const fidesDefaultConsent = { essential: true };
+                const toConsentFlags = (k) =>
+                    (window.Fides?.consent ?? fidesDefaultConsent)[k] ?? fidesInitialized;
+                return keys.map(toConsentFlags).every(consentFlagIsTrue);
+            };
+            const otConsentCategories = [];
+            const pushIfConsented = (otCategory, fidesKeys) => {
+                if (consented(fidesKeys)) {
+                    otConsentCategories.push(otCategory);
+                }
+            };
+
+            fidesOtKeyEquivalencies
+                .map(toReverseEquivalency)
+                .forEach(([otKey, fidesKey]) => pushIfConsented(otKey, fidesKey));
+            return otConsentCategories;
+        };
+
+        const consentPreferencesMapping = (event) => {
+            if (event.type === 'FidesUpdated') {
+                const lastFidesUIShownEvent = findLastdataLayerEvent('FidesUIShown');
+                let methodMap = {};
+                console.log("****lastFidesUIShownEvent", lastFidesUIShownEvent?.Fides?.extraDetails?.servingComponent)
+                if (lastFidesUIShownEvent?.Fides?.extraDetails?.servingComponent?.endsWith('banner') ?? false) {
+                    methodMap = {
+                        reject: 'Banner Reject All',
+                        accept: 'Banner Accept Cookies',
+                        dismiss: 'Banner - Continue without Accepting'
+                    };
+                } else {
+                    methodMap = {
+                        reject: 'Preferences Reject All',
+                        save: 'Preferences Save Settings',
+                        accept: 'Preferences Allow All'
+                    };
+                }
+                const consentMethod = event?.detail?.extraDetails?.consentMethod;
+                const eventLabel = methodMap[consentMethod] || null;
+                const consentGroups = fidesExtractConsentGroupsAsOtArray()
+                trackConsentPreferences(consentGroups, eventLabel);
+            }
+        };
+        //===== end of fides helper functions =====
+
+
+        //========== snowplow script injection ========
+        (function (p, l, o, w, i, n, g) {
+            if (!p[i]) {
+                p.GlobalSnowplowNamespace = p.GlobalSnowplowNamespace || [];
+                p.GlobalSnowplowNamespace.push(i); p[i] = function () {
+                    (p[i].q = p[i].q || []).push(arguments)
+                }; p[i].q = p[i].q || []; n = l.createElement(o); g = l.getElementsByTagName(o)[0]; n.async = 1;
+                n.src = w; g.parentNode.insertBefore(n, g)
+            }
+        }(window, document, "script", "https://globalservices.conde.digital/p77xzrbz9z.js", "snowplowCN"));
+
+        document.addEventListener('DOMContentLoaded', function () {
+            setupConsentObserver();
+        });
+
+        function setupConsentObserver() {
+            let snowplowInitialized = false;
+
+            const observer = new MutationObserver(() => {
+                if (window.Fides || window.OnetrustActiveGroups) {
+                    const consentGroups = getConsentGroups?.() || [];
+                    console.log("******consentGroups", consentGroups);
+                    if (consentGroups.length && !snowplowInitialized) {
+                        snowplowInitialized = true;
+                        console.log('**** Snowplow initialized');
+
+                        window.snowplowCN(function () {
+                            const snowplowConfig = {
+                                appId: 'condenast-it-magazineshop',
+                                contexts: {
+                                    webPage: true,  // Enable the web page context
+                                    performanceTiming: true,
+                                    clientHints: true,
+                                    webVitals: true
+                                },
+                                anonymousTracking: {
+                                    withSessionTracking: true,
+                                    withServerAnonymisation: true
+                                },
+                                stateStorageStrategy: 'cookieAndLocalStorage',
+                                discoverRootDomain: true,
+                                cookieSameSite: window.location.protocol === 'https:' ? 'None' : 'Lax',
+                                cookieSecure: window.location.protocol === 'https:',
+                                eventMethod: 'post',
+                                postPath: '/com.condenast/yv8'
+                            }
+
+                            const consentGroups = getConsentGroups()
+                            const anonymousConfig = consentGroups.includes('C0004')
+                                ? {
+                                    anonymousTracking: false,
+                                    stateStorageStrategy: 'cookieAndLocalStorage'
+                                }
+                                : {};
+
+                            console.log("****consentGroups", consentGroups)
+                            console.log("*****updated snowplowConfig", { ...snowplowConfig, ...anonymousConfig });
+
+                            // app Id and collector URL needs to be altered as per the domain
+                            snowplowCN('newTracker', 'sp', 'qc.abbonatiqui.it', { ...snowplowConfig, ...anonymousConfig });
+
+
+                            const pagePlugin = {
+                                pageTitle: () => {
+                                    return {
+                                        beforeTrack: (payloadBuilder) => {
+                                            payloadBuilder.add('page', window?.document?.title);
+                                            payloadBuilder.build();
+                                        }
+                                    };
+                                }
+                            };
+
+                            //Entities that needs to be added to each event
+                            snowplowCN('addPlugin', pagePlugin, 'pageTitle');
+                            snowplowCN('addGlobalContexts', globalEntity);
+
+                            snowplowCN('enableActivityTracking', {
+                                minimumVisitLength: 5,
+                                heartbeatDelay: 10
+                            });
+                            snowplowCN('enableLinkClickTracking');
+                            snowplowCN('trackPageView');
+
+                            if (window.OnetrustActiveGroups) {
+                                trackCmpBanner()
+                            }
+                        });
+
+                    }
+                }
+            });
+
+            // Ensure DOM is loaded before accessing document.body
+            observer.observe(document.body, { childList: true, subtree: true });
+
+            window.addEventListener('beforeunload', () => observer.disconnect());
+        }
+
+        // ===== Snowplow Consent Handling ======
+        var dataLayer = window.dataLayer || [];
+        var cmpLoaded = false; // indicate ifconsent banner is shown
+        function handleConsentUpdate(event) {
+            // console.log("*****oneTrust set", event);
+
+            const consentGroups = getConsentGroups();
+            if (userEntity && userEntity.data) {
+                userEntity.data.onetrust_active_groups = consentGroups;
+                userEntity.data.consent_banner_variant = window?.Fides ? 'fides' : null;
+                window.snowplowCN('removeGlobalContexts', [userEntity]);
+                window.snowplowCN('addGlobalContexts', [userEntity]);
+            }
+
+            // The domain and network user Id gets generated when user accepts C0004 cookie
+            const nonAnonymousConsentGroups = ['C0004'];
+            const hasNonAnonymousConsent = !!consentGroups.some(function (item) {
+                return nonAnonymousConsentGroups.includes(item)
+            });
+            if (hasNonAnonymousConsent) {
+                window.snowplowCN('disableAnonymousTracking', {
+                    stateStorageStrategy: 'cookieAndLocalStorage',
+                });
+            } else {
+                window.snowplowCN('enableAnonymousTracking', {
+                    options: {
+                        withServerAnonymisation: true,
+                        withSessionTracking: true
+                    },
+                    stateStorageStrategy: 'cookieAndLocalStorage',
+                });
+            }
+
+            if (window.OnetrustActiveGroups) {
+                // // tracking cmp_visible event
+                // trackCmpBanner();
+
+                // tracking consent preferences event
+                trackConsentPreferences(consentGroups)
+            }
+        };
+
+        window.addEventListener('OneTrustGroupsUpdated', handleConsentUpdate);
+        window.addEventListener('FidesInitialized', handleConsentUpdate);
+        window.addEventListener('FidesUpdated', handleConsentUpdate);
+        window.addEventListener('FidesUpdated', consentPreferencesMapping);
+        window.addEventListener('FidesUIShown', trackFidesBanner);
+        // ===== Snowplow Consent Handling End =====
+
+        function getCookie(name) {
+            if (typeof document === 'undefined' || !name) {
+                return '';
+            }
+            const cookiePieces = document.cookie.split(/;\s?/);
+            let cookieValue = '';
+            for (let i = 0; i < cookiePieces.length; i++) {
+                const parts = cookiePieces[i].split('=');
+                if (parts[0] === name) {
+                    cookieValue = decodeURIComponent(parts.slice(1).join('='));
+                    break;
+                }
+            }
+            return cookieValue;
+        };
+
+        function getConsentGroups() {
+
+            let consentValues = [];
+            const otPayload = getCookie('OptanonConsent');
+            if (window.Fides) {
+                const consentValues = fidesExtractConsentGroupsAsOtArray();
+                console.log("******Fides consentValues", consentValues);
+                return consentValues;
+            } else if (window.OnetrustActiveGroups) {
+                const OTGroup = window.OnetrustActiveGroups?.split(',')?.slice(1, -1);
+                console.log("******OTGroup consentValues", OTGroup);
+                return OTGroup;
+            } else if (otPayload) {
+                const otGroupsMatch = otPayload.match(/groups=(.*)/g);
+                const otGroups = otGroupsMatch?.[0]
+                    ? otGroupsMatch[0].replace('groups=', '').split(',')
+                    : null;
+                const groupBuilder = [];
+                otGroups?.forEach((group) => {
+                    if (group.includes(':1')) {
+                        groupBuilder.push(group.replace(':1', ''));
+                    }
+                });
+                const OTGroup = groupBuilder.join(',').split('&')[0].split(',');
+                return OTGroup;
+            }
+
+            return ['C0001'];
+        };
+
+
+
+        // we have global and adhoc entities. Global entities would be present in all the events. Adhoc entities
+        // would be present only in specific custom events.
+        // Entity Details - Default entities with basic properties. User and Site are some example entities.
+        // Data Governance team can help in providing the details of the basic and custom events. 
+        var userEntity = {
+            schema: 'iglu:com.condenast/user/jsonschema/9-0-3',
+            data: {
+                'browser': window?.navigator?.appName || null,
+                'browser_version': window?.navigator?.appVersion || null,
+                'is_logged_in': true, // get from session Session::has('loggedUser');
+                'local_visit_hour': new Date().getHours(),
+                'time_zone_offset': parseInt((new Date()).getTimezoneOffset() / -60),
+                'onetrust_active_groups': getConsentGroups(),
+                'consent_banner_variant': window.Fides ? 'fides' : null,
+            }
+        }
+
+        var siteEntity = {
+            schema: 'iglu:com.condenast/site/jsonschema/2-0-1',
+            data: {
+                'org_id': '4gKgcEwfFP9GHnX9S1tUNoPkZdoV', // @TODO: EXAMPLE to be replaced
+                'org_app_id': 'a61a3c7a-01d9-4175-8ab8-7171949de605', // @TODO:  EXAMPLE to be replaced
+                'site_app_version': 'abbonatiqui_laravel',
+                'site_env': 'staging', // production || staging
+                'site_section': 'homepage', // If there is sometype of bradcrumbs liek Home > about etc, used in conjuction with subsections.
+                'site_subsection': '',
+                'site_subsection_2': '',
+                'site_data_source': 'web', // production / staging
+            }
+        };
+
+        var referrerEntity = {
+            schema: 'iglu:com.condenast/referrer/jsonschema/2-0-1',
+            data: {
+                'refr_domain': document.referrer || '',
+            }
+        };
+
+        // for a url such as: https://www.vogue.it/gallery/oscar-2025-red-carpet-look
+        var pageEntity = {
+            schema: 'iglu:com.condenast/page/jsonschema/6-0-1',
+            data: {
+                'path_level_1': getUrlPath(0), // gallery
+                'path_level_2': getUrlPath(1), // oscar-2025-red-carpet-look
+                'path_level_3': getUrlPath(2),
+                'path_level_4': getUrlPath(3),
+                'tab_active': window.document.visibilityState === 'visible',
+                'canonical_url': document.querySelector("link[rel='canonical']")?.getAttribute('href') || null,
+                'ecommerce_targeter': getParam('source'),
+                'clean_url': window.location.origin + window.location.pathname
+            }
+        };
+
+        var syndicationEntity = {
+            schema: 'iglu:com.condenast/syndication/jsonschema/3-0-1',
+            data: {
+                'is_syndication_content': false,
+                'syndication_original_source': '',
+            }
+        };
+
+        var contentEntity = {
+            schema: 'iglu:com.condenast/content/jsonschema/2-0-1',
+            data: {
+                'content_language': 'it-IT',
+                'content_type': 'subscription',
+                'content_source': 'web',
+                'date_display': (new Date()).toISOString(),
+            }
+        };
+
+        var campaignEntity = {
+            schema: 'iglu:com.condenast/campaign/jsonschema/6-0-0',
+            data: {
+                'emailsource': getParam('esrc'),
+                'itm_campaign': getParam('itm_campaign'),
+                'itm_content': getParam('itm_content'),
+                'itm_medium': getParam('itm_medium'),
+                'itm_source': getParam('itm_source'),
+                'mkt_brand': getParam('utm_brand'),
+                'mkt_id': getParam('utm_id'),
+                'mkt_mailing': getParam('utm_mailing'),
+                'mkt_social_type': getParam('utm_social-type'),
+                'mkt_test': getParam('utm_test'),
+            }
+        };
+
+        var globalEntity = [userEntity, siteEntity, referrerEntity, pageEntity, syndicationEntity, contentEntity, campaignEntity];
+
+
+        function trackCmpBanner() {
+            if (
+                !getCookie('OptanonAlertBoxClosed') &&
+                window.OneTrust &&
+                window.OneTrust.GetDomainData
+            ) {
+                const { IsBannerLoaded, ShowAlertNotice } = window.OneTrust.GetDomainData();
+                console.log("IsBannerLoaded, ShowAlertNotice", IsBannerLoaded, ShowAlertNotice)
+                if (ShowAlertNotice && !cmpLoaded) {
+                    snowplowCN(`trackCmpVisible:sp`, {
+                        /* Using the performance.now API to retrieve the elapsed time from the page navigation. */
+                        elapsedTime: performance.now(),
+                    });
+                    cmpLoaded = true;
+                }
+            }
+        }
+
+        function trackFidesBanner(event) {
+            // class
+            console.log('Fides banner shown ');
+            if (window.Fides) {
+                const bannerShownEvents = wasFidesBannerShownGtmEvent(event)
+                if (bannerShownEvents && !cmpLoaded) {
+                    snowplowCN(`trackCmpVisible:sp`, {
+                        elapsedTime: event.timeStamp
+                    });
+                    cmpLoaded = true;
+                }
+            }
+        }
+
+        function trackConsentPreferences(otActiveGroups, eventLabel = null) {
+            /*
+             * Use OneTrust.GetDomainData().Groups which contains the available groups.
+             */
+            let optanonAction;
+
+            if (!eventLabel) {
+                const optEvent = findLastOTAction()
+                console.log('trackConsentPreferences::findLastOTAction', optEvent)
+                if (optEvent) {
+                    optanonAction = optEvent?.[2]?.optanonAction || optEvent?.optanonAction;
+                }
+            }
+
+            const clickInfoEntity = [
+                {
+                    schema: 'iglu:com.condenast/click_info/jsonschema/2-0-0',
+                    data: {
+                        click_text: eventLabel || optanonAction
+                    }
+                }
+            ];
+
+            const enhancedConsent = {
+                consentScopes: otActiveGroups,
+                basisForProcessing: 'consent',
+                consentUrl: window.location.href,
+                consentVersion: '1.0',
+                domainsApplied: [window.location.origin],
+                gdprApplies: true,
+                context: clickInfoEntity
+            }
+            console.log('optanonAction', optanonAction);
+
+            switch (eventLabel || optanonAction) {
+                case 'Banner Accept Cookies':
+                case 'Preferences Allow All':
+                    snowplowCN(`trackConsentAllow:sp`, enhancedConsent)
+                    break;
+                case 'Banner Reject All':
+                case 'Preferences Reject All':
+                case 'Banner - Continue without Accepting':
+                    snowplowCN(`trackConsentDeny:sp`, enhancedConsent)
+                    break;
+                case 'Preferences Save Settings':
+                    snowplowCN(`trackConsentSelected:sp`, enhancedConsent)
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        function findLastOTAction() {
+            let dataLayer = window?.dataLayer ?? [];
+            for (let i = dataLayer.length - 1; i >= 0; i--) {
+                const event = dataLayer[i];
+                if (event?.[2]?.optanonAction || event?.optanonAction) {
+                    return event;
+                }
+            }
+            return null; // Return null if no matching element is found
+        }
+
+        function findLastdataLayerEvent(type) {
+            let dataLayer = window?.dataLayer ?? [];
+            for (let i = dataLayer.length - 1; i >= 0; i--) {
+                const event = dataLayer[i];
+                console.log("*****event*****", event);
+                if (event?.event === type) {
+                    return event;
+                }
+            }
+            return null;
+        }
+
+        // return the path url ex: https://www.vogue.it/article/sixty-years-of-vogue-italia?utm_test=ok&ref=true
+        // If we need to get any query params. utm_test=ok&ref=true
+        function getParam(param) {
+            urlParams = new URLSearchParams(window.location.search.toLowerCase());
+            return urlParams.get(param) || null;
+        }
+
+        // return the path url ex: https://www.vogue.it/article/sixty-years-of-vogue-italia
+        //  segmetns will be [article, sixty-years-of-vogue-italia];
+        function getUrlPath(index = 0) {
+            const segments = window.location.pathname.toLowerCase().split('/').filter(Boolean);
+            return segments[index] ?? '';
+        }
+    </script>
+    <!-- Snowplow stops plowing -->
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
 </head>
+
 <body>
-    
+    <!-- DOC: https://docs.google.com/spreadsheets/d/1uKoWT9Qcs6orqGaz32ON5PF_qP2v-z9t3X_xnF4MwEw/edit?gid=1179865621#gid=1179865621 -->
+    <main class="container">
+        <div class="row">
+            <div class="col-12">
+
+                <h3 class="display-3">HOMEPAGE - Main Magazine website events</h3>
+                <div class="btn-group" role="group" aria-label="Basic example">
+                    <button type="button" class="btn btn-outline-primary" name="add" id="js_main"
+                        value="main_magazine">Landed on main website</button>
+                    <button type="button" class="btn btn-outline-primary" name="header_menu" id="js_header_menu"
+                        value="header_menu">Main menu item click</button>
+                    <button type="button" class="btn btn-outline-primary" name="footer_menu" id="js_footer_menu"
+                        value="footer_menu">Footer menu item click</button>
+                    <button type="button" class="btn btn-outline-primary" name="magazine_clicked"
+                        id="js_magazine_clicked" value="magazine_clicked">Magazine Clicked</button>
+                </div>
+                <script>
+
+                    // user lands on magazine page or offer page
+                    document.getElementById('js_main').addEventListener('click', (e) => {
+                        trackMainMagazine(order.items);
+                    });
+
+                    document.getElementById('js_header_menu').addEventListener('click', (e) => {
+                        trackHeaderMenu(e);
+                    });
+
+                    document.getElementById('js_footer_menu').addEventListener('click', (e) => {
+                        trackFooterMenu(e);
+                    });
+
+                    document.getElementById('js_magazine_clicked').addEventListener('click', (e) => {
+                        trackItemClicked('hero');
+                    });
+
+                    // Track View offer page in case of main offerte
+                    function trackMainMagazine(products) {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'impression',
+                                    subject: 'product',
+                                    // label here can be null - label usually it's the click text and for impression events it's null
+                                    label: null, // in case of offerte `{{offer name}}`, in case of main magazine, `homepage`
+                                    platform: "abbonatiqui_laravel" // abbonatiqui or offerte.abbonatiqui
+                                }
+                            },
+                            context: getProductsContext(products),
+                        });
+                    }
+
+                    // When user clicks one of the menu items in top
+                    function trackHeaderMenu(order) {
+                        // Create the error context
+                        let ClickInfo = [{
+                            schema: 'iglu:com.condenast/click_info/jsonschema/2-0-2',
+                            data: {
+                                click_url: "PAYMENT_FAILED",
+                                click_id: 'error',
+                                click_class: "Payment declined by bank",
+                                click_target: 'transaction',
+                                click_text: 'transaction',
+                                click_type: 'transaction',
+                                placement: 'footer_menu',
+                            }
+                        }];
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/navigation_event/jsonschema/3-0-0',
+                                data: {
+                                    type: 'click',
+                                    subject: 'header_menu',
+                                    label: 'Menu item clicked', // click of top menu items: Homepage/Area Clienti/Info & Contatti/Subscriptions
+                                    items: [
+                                        {
+                                            content_url: "https://example.com/link that user clicked", //  the url where the user is going to - href
+                                        }
+                                    ]
+                                }
+                            },
+                            context: [...ClickInfo]
+                        });
+                    }
+
+                    // When user clicks one of the menu items in footer.
+                    function trackFooterMenu(order) {
+                        // Create the error context
+                        let ClickInfo = [{
+                            schema: 'iglu:com.condenast/click_info/jsonschema/2-0-2',
+                            data: {
+                                click_url: "PAYMENT_FAILED",
+                                click_id: 'error',
+                                click_class: "Payment declined by bank",
+                                click_target: 'transaction',
+                                click_text: 'transaction',
+                                click_type: 'transaction',
+                                placement: 'footer_menu',
+                            }
+                        }];
+
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/navigation_event/jsonschema/3-0-0',
+                                data: {
+                                    type: 'click',
+                                    subject: 'footer_menu',
+                                    label: 'footer item clicked', // click of footer menu items ex: Condizioni di vendita/Privacy Policy/ Gestici i cookies
+                                    items: [
+                                        {
+                                            content_url: "https://example.com/link that user clicked", //  the url where the user is going to - href
+                                        }
+                                    ]
+                                }
+                            },
+                            context: [...ClickInfo]
+                        });
+                    }
+
+                    // When clicked on single main magazine. this is applicable only on main website.
+                    // // placement hero|list 
+                    function trackItemClicked(placement = 'hero') {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'select',
+                                    subject: 'offer_selection',
+                                    label: "Scopri le offerte",  // in case of offerte `{{offer name}}`, in case of main magazine, `{{magazine name}}`
+                                    platform: "abbonatiqui_laravel", // abbonatiqui or offerte.abbonatiqui
+                                    placement: placement, // in case of abbonatiqui hero|list
+                                }
+                            },
+                            context: getProductsContext(order.items),
+                        });
+                    }
+                </script>
+
+                <hr>
+                <h3 class="display-3">DETAIL + CART - Handle Ecommerce Tracking</h3>
+                <div class="btn-group" role="group" aria-label="Basic example">
+                    <button type="button" class="btn btn-outline-primary" name="magazine_detail" id="js_magazine_detail"
+                        value="magazine_detail">Lands on Magazine Details Page</button>
+                    <button type="button" class="btn btn-outline-primary" name="jump_to" id="js_jump_to"
+                        value="jump_to">Jump to button clicked</button>
+                    <button type="button" class="btn btn-outline-primary" name="add" id="js_add" value="add">Add to
+                        cart</button>
+                    <button type="button" class="btn btn-outline-primary" name="remove" id="js_remove"
+                        value="remove">Remove from cart</button>
+                    <button type="button" class="btn btn-outline-primary" name="gift" id="js_gift" value="gift"> È un
+                        regalo</button>
+                    <button type="button" class="btn btn-outline-primary" name="click_shopping_bag"
+                        id="js_click_shopping_bag" value="click_shopping_bag">Clicked shopping bag</button>
+                    <button type="button" class="btn btn-outline-primary" name="details" id="js_details"
+                        value="details">Cart Details (Lands on View cart)</button>
+                    <button type="button" class="btn btn-outline-primary" name="continue_shoping"
+                        id="js_continue_shoping" value="continue_shoping">Continue shopping `Acquista Ancora`</button>
+                    <button type="button" class="btn btn-outline-primary" name="continue_checkout"
+                        id="js_continue_checkout" value="continue_checkout">Start Checkout aka `continue`</button>
+                </div>
+                <script>
+                    // user lands on magazine page
+                    document.getElementById('js_magazine_detail').addEventListener('click', (e) => {
+                        trackItemList();
+                    });
+
+                    // user clicks the scroll down button
+                    document.getElementById('js_jump_to').addEventListener('click', (e) => {
+                        trackJumpTo();
+                    });
+
+                    // Cart action - Add / Remove / View / checkout
+                    document.getElementById('js_add').addEventListener('click', (e) => {
+                        trackAddToCart(product);
+                    });
+
+                    // when removing from cart
+                    document.getElementById('js_remove').addEventListener('click', (e) => {
+                        trackRemoveFromCart(product);
+                    });
+
+                    // when user click the "shopping bag btn"
+                    document.getElementById('js_click_shopping_bag').addEventListener('click', (e) => {
+                        trackClickedShoppingBag(order);
+                    });
+
+
+                    // when user lands on cart page
+                    document.getElementById('js_details').addEventListener('click', (e) => {
+                        trackViewCart(order);
+                    });
+
+                    // when user clicks "Acquista Ancora" in the cart page
+                    document.getElementById('js_continue_shoping').addEventListener('click', (e) => {
+                        trackContinueShopping();
+                    });
+
+                    // when user clicks " È un regalo"
+                    document.getElementById('js_gift').addEventListener('click', (e) => {
+                        trackGiftOption(product);
+                    });
+
+
+                    // when user clicks "continua" in the cart page
+                    document.getElementById('js_continue_checkout').addEventListener('click', (e) => {
+                        trackStartCheckout(order);
+                    });
+
+                    // When clicked on singlel main magazine. 
+                    function trackItemList() {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'impression',
+                                    subject: 'product_detail',
+                                },
+                            },
+                            context: getProductsContext(order.items),
+                        });
+                    }
+
+                    // When user clicks the scroll down button
+                    function trackJumpTo() {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'jump_to',
+                                    subject: 'offer_selection',
+                                    label: "Scopri le offerte",
+                                    platform: "abbonatiqui_laravel"
+                                }
+                            }
+                        });
+                    }
+
+                    // Function to track add to cart event
+                    function trackAddToCart(product) {
+                        snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'add_item',
+                                    subject: 'cart',
+                                    label: 'Aggiungi',
+                                    platform: "abbonatiqui_laravel" // abbonatiqui|offerte/main
+                                },
+                            },
+                            context: [
+                                getProduct(product)
+                            ]
+                        });
+                    }
+
+                    // Function to track remove from cart event
+                    function trackRemoveFromCart(product) {
+                        snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-0',
+                                data: {
+                                    type: 'remove_item',
+                                    subject: 'cart',
+                                    label: 'Elimina',
+                                    platform: "abbonatiqui_laravel" // abbonatiqui|offerte/mai
+                                },
+                            },
+                            context: [
+                                getProduct(product)
+                            ]
+                        });
+                    }
+
+                    // Fired when user clicks "Shopping bag"
+                    function trackClickedShoppingBag() {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'click',
+                                    subject: 'cart',
+                                }
+                            }
+                        });
+                    }
+
+                    // Fired when user lands on view cart page
+                    function trackViewCart(order) {
+                        // finished the transaction successfully.
+                        // create the contexts array
+                        let productsContext = getProductsContext(order.items);
+
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'impression',
+                                    subject: 'cart',
+                                }
+                            },
+                            context: productsContext
+                        });
+                    }
+
+                    // Continue shopping.
+                    function trackContinueShopping() {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'continue',
+                                    subject: 'shopping',
+                                }
+                            }
+                        });
+                    }
+
+                    // Function to track remove from cart event
+                    function trackGiftOption(product) {
+                        snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-0',
+                                data: {
+                                    type: 'select',
+                                    subject: 'gift_option',
+                                    label: 'È un regalo',
+                                    platform: "abbonatiqui_laravel" // abbonatiqui|offerte/mai
+                                },
+                            },
+                            context: [
+                                getProduct(product)
+                            ]
+                        });
+                    }
+
+                    // when user clicks contunue to cart but before going to recap page.
+                    function trackStartCheckout(order) {
+                        // finished the transaction successfully.
+                        // create the contexts array
+                        let productsContext = getProductsContext(order.items);
+
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'initiate',
+                                    subject: 'checkout',
+                                }
+                            },
+                            context: productsContext
+                        });
+                    }
+                </script>
+
+                <hr>
+                <h3 class="display-3">User Account</h3>
+                <div class="btn-group" role="group" aria-label="Basic example">
+                    <button type="button" class="btn btn-outline-primary" name="login" id="js_login" value="login">Login
+                        Attempt</button>
+                    <button type="button" class="btn btn-outline-primary" name="login_success" id="js_login_success"
+                        value="login_success">Login Success</button>
+                    <button type="button" class="btn btn-outline-primary" name="login_error" id="js_login_error"
+                        value="login_error">Login Error</button>
+
+                    <button type="button" class="btn btn-outline-primary" name="reset_password" id="js_reset_password"
+                        value="reset_password">Reset Password</button>
+
+                    <button type="button" class="btn btn-outline-primary" name="register" id="js_register"
+                        value="register">Register Attempt</button>
+                    <button type="button" class="btn btn-outline-primary" name="register_success"
+                        id="js_register_success" value="register_success">Register Success</button>
+                    <button type="button" class="btn btn-outline-primary" name="register_error" id="js_register_error"
+                        value="register_error">*Register Error?</button>
+                </div>
+                <script>
+
+                    document.getElementById('js_login').addEventListener('click', (e) => {
+                        trackLogin(e);
+                    });
+
+                    document.getElementById('js_login_success').addEventListener('click', (e) => {
+                        trackLoginSuccess(e);
+                    });
+
+                    document.getElementById('js_login_error').addEventListener('click', (e) => {
+                        trackLoginError(e);
+                    });
+
+                    document.getElementById('js_reset_password').addEventListener('click', (e) => {
+                        trackResetPass(e);
+                    });
+
+
+                    document.getElementById('js_register').addEventListener('click', (e) => {
+                        trackRegister(e);
+                    });
+
+                    document.getElementById('js_register_success').addEventListener('click', (e) => {
+                        trackRegisterSuccess(e);
+                    });
+
+                    document.getElementById('js_register_error').addEventListener('click', (e) => {
+                        trackRegisterError(e);
+                    });
+
+
+                    function trackLogin(event) {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/user_account_event/jsonschema/5-0-0',
+                                data: {
+                                    type: 'attempt',
+                                    subject: 'login',
+                                    login_method: "via form",
+                                    platform: 'abbonatiqui_laravel',
+                                }
+                            }
+                        });
+                    }
+
+                    function trackLoginSuccess(event) {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/user_account_event/jsonschema/5-0-0',
+                                data: {
+                                    type: 'complete',
+                                    subject: 'login',
+                                    login_method: "via form",
+                                    platform: 'abbonatiqui_laravel',
+                                }
+                            }
+                        });
+                    }
+
+                    function trackResetPass(event) {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/user_account_event/jsonschema/5-0-0',
+                                data: {
+                                    type: 'click',
+                                    subject: 'request password reset',
+                                    platform: 'abbonatiqui_laravel',
+                                }
+                            }
+                        });
+                    }
+
+
+                    function trackLoginError(event) {
+                        let errorContext = [{
+                            schema: 'iglu:com.condenast/error_info/jsonschema/1-0-1',
+                            data: {
+                                code: "403",      // Error code (e.g., "PAYMENT_FAILED")
+                                type: 'error',      // Error type (e.g., "transaction")
+                                message: "Error during login",// Error message (e.g., "Payment declined by bank")
+                                subject: 'login'     // Relates to the checkout process
+                            }
+                        }];
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/user_account_event/jsonschema/5-0-0',
+                                data: {
+                                    type: 'error',
+                                    subject: 'login',
+                                    platform: 'abbonatiqui_laravel',
+                                    error: "via form", // The error message displayed.
+                                }
+                            },
+                            context: [...errorContext]
+                        });
+                    }
+
+
+                    function trackRegister(event) {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/user_account_event/jsonschema/5-0-0',
+                                data: {
+                                    type: 'click',
+                                    subject: 'registration'
+                                }
+                            }
+                        });
+                    }
+
+                    function trackRegisterSuccess(event) {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/user_account_event/jsonschema/5-0-0',
+                                data: {
+                                    type: 'complete',
+                                    subject: 'registration'
+                                }
+                            }
+                        });
+                    }
+
+                    function trackRegisterError(event) {
+                        let errorContext = [{
+                            schema: 'iglu:com.condenast/error_info/jsonschema/1-0-1',
+                            data: {
+                                code: "400",      // Error code (e.g., "PAYMENT_FAILED")
+                                type: 'error',      // Error type (e.g., "transaction")
+                                message: "Error during register",// Error message (e.g., "Payment declined by bank")
+                                subject: 'registration'     // Relates to the checkout process
+                            }
+                        }];
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/user_account_event/jsonschema/5-0-0',
+                                data: {
+                                    type: 'error',
+                                    subject: 'registration'
+                                }
+                            },
+                            context: [...errorContext]
+                        });
+                    }
+                </script>
+
+                <h3 class="display-3">PAYMENT - Handle payment selection event tracking</h3>
+                <div class="btn-group" role="group" aria-label="Basic example">
+                    <button type="button" class="btn btn-outline-primary" name="add_shipping" id="js_add_shipping"
+                        value="add_shipping">Add Shipping</button>
+                    <button type="button" class="btn btn-outline-primary" name="select_payment" id="js_select_payment"
+                        value="select_payment">Select payment</button>
+                    <button type="button" class="btn btn-outline-primary" name="return_back" id="js_return_back"
+                        value="return_back">Return back (Torna indietro)</button>
+                    <button type="button" class="btn btn-outline-primary" name="add_payment" id="js_add_payment"
+                        value="add_payment">Add payment (Continue)</button>
+                </div>
+                <script>
+                    document.getElementById('js_add_shipping').addEventListener('click', (e) => {
+                        trackAddShipping(order);
+                    });
+
+                    document.getElementById('js_select_payment').addEventListener('click', (e) => {
+                        trackSelectPayment(order);
+                    });
+
+                    document.getElementById('js_add_payment').addEventListener('click', (e) => {
+                        trackCompletePayment(order);
+                    });
+
+                    document.getElementById('js_return_back').addEventListener('click', (e) => {
+                        trackClickBack(order);
+                    });
+
+                    // when user finishes addin his data/shipping informaiton on profile page and click continua
+                    function trackAddShipping(order) {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'complete',
+                                    subject: 'shipping_information'
+                                }
+                            },
+                            context: getProductsContext(order.items),
+                        });
+                    }
+
+                    // each tim a user selects a payment method
+                    function trackSelectPayment(order) {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'select',
+                                    subject: 'payment_information',
+                                    label: 'paypal', // payment method selected aka card, paypal, bank, stripe etc
+                                    platform: "abbonatiqui_laravel" // abbonatiqui|offerte.abbonatiqui
+                                }
+                            },
+                            context: getProductsContext(order.items),
+                        });
+                    }
+
+                    // when user finishes adding payment, so after he select a payment and when click `continue`
+                    function trackCompletePayment(order) {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'completed',
+                                    subject: 'payment_information'
+                                },
+                            },
+                            context: getProductsContext(order.items),
+                        });
+                    }
+
+                    // when user clicks "Torna Indietro"
+                    function trackClickBack(order) {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'back_to',
+                                    subject: 'shipping_information'
+                                },
+                            },
+                            context: getProductsContext(order.items),
+                        });
+                    }
+                </script>
+
+
+                <hr>
+                <h3 class="display-3">RECAP + TRANSACTION - Transactions events</h3>
+                <div class="btn-group" role="group" aria-label="Basic example">
+                    <button type="button" class="btn btn-outline-primary" name="summary" id="js_summary"
+                        value="summary">Checkout Summary aka `Recap`</button>
+                    <button type="button" class="btn btn-outline-primary" name="privacy" id="js_privacy"
+                        value="privacy">Check PRIVACY</button>
+                    <button type="button" class="btn btn-outline-primary" name="attempt" id="js_attempt"
+                        value="attempt">Start Payment</button>
+                    <button type="button" class="btn btn-outline-primary" name="thankyou" id="js_thankyou"
+                        value="thankyou">Purchase Success</button>
+                    <button type="button" class="btn btn-outline-primary" name="error" id="js_error"
+                        value="error">Purchase Error</button>
+                    <button type="button" class="btn btn-outline-primary" name="trasnaction_error_back"
+                        id="js_trasnaction_error_back" value="trasnaction_error_back">Return back (From failed
+                        attempt)</button>
+                </div>
+                <script>
+
+                    document.getElementById('js_summary').addEventListener('click', (e) => {
+                        trackSummaryPage(order);
+                    });
+
+                    document.getElementById('js_privacy').addEventListener('click', (e) => {
+                        trackPrivacyCheck(order);
+                    });
+
+                    // TRANSACTIONS
+                    document.getElementById('js_attempt').addEventListener('click', () => {
+                        trackAttempt(order);
+                    });
+
+                    document.getElementById('js_thankyou').addEventListener('click', () => {
+                        trackThankyouPage(order);
+                    });
+
+                    document.getElementById('js_error').addEventListener('click', () => {
+                        trackErrorPage(order);
+                    });
+
+                    document.getElementById('js_trasnaction_error_back').addEventListener('click', () => {
+                        trackReturnBackTransaction(order);
+                    });
+
+                    // Fired when user lands in the recap page of the order. 
+                    function trackSummaryPage(order) {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'impression',
+                                    subject: 'checkout_summary',
+                                }
+                            },
+                            context: getProductsContext(order.items),
+                        });
+                    }
+
+                    // Fired when user selects/deselect privacy policy
+                    function trackPrivacyCheck(order) {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'select',
+                                    subject: 'privacy_policy',
+                                }
+                            },
+                            context: getProductsContext(order.items),
+                        });
+                    }
+
+                    // Fired when user click "Completa L'Aquisto"
+                    function trackAttempt(order) {
+                        let productsContext = getProductsContext(order.items);
+
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'attempt',
+                                    subject: 'transaction',
+                                    label: "Completa l'acquisto",
+                                    platform: "abbonatiqui_laravel" // abbonatiqui|offerte/main
+                                }
+                            },
+                            context: productsContext
+                        });
+                    }
+
+                    // Fired when user lands Track success page
+                    function trackThankyouPage(order) {
+                        // finished the transaction successfully.
+                        // create the contexts array
+                        let productsContext = getProductsContext(order.items);
+
+                        // Add transaction details
+                        productsContext.push({
+                            schema: 'iglu:com.condenast/transaction/jsonschema/2-0-0',
+                            data: {
+                                transaction_id: order.id,
+                                revenue: parseFloat(order.total),
+                                tax: parseFloat(order.tax),
+                                shipping: parseFloat(order.shipping),
+                                currency_code: "EUR",
+                                payment_method: "EUR",
+                                discount: 0, // float
+                                coupon_code: null, // if applicable
+
+                            }
+                        });
+
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'success',
+                                    subject: 'transaction',
+                                }
+                            },
+                            context: productsContext
+                        });
+                    }
+
+                    // Fired when user lands Track Error page
+                    function trackErrorPage(order) {
+                        // finished the transaction successfully.
+                        // create the contexts array
+                        let productsContext = getProductsContext(order.items);
+
+                        // Create the error context
+                        let errorContext = [{
+                            schema: 'iglu:com.condenast/error_info/jsonschema/1-0-1',
+                            data: {
+                                code: "PAYMENT_FAILED",      // Error code (e.g., "PAYMENT_FAILED")
+                                type: 'error',      // Error type (e.g., "transaction")
+                                message: "Payment declined by bank",// Error message (e.g., "Payment declined by bank")
+                                subject: 'transaction'     // Relates to the checkout process
+                            }
+                        }];
+
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'error',
+                                    subject: 'transaction',
+                                }
+                            },
+                            context: [...productsContext, ...errorContext]
+                        });
+                    }
+
+                    // Fired when  User clicks on "Torna Indietro" from error page of payment
+                    function trackReturnBackTransaction(order) {
+                        window.snowplowCN('trackSelfDescribingEvent', {
+                            event: {
+                                schema: 'iglu:com.condenast/checkout_flow_event/jsonschema/1-0-1',
+                                data: {
+                                    type: 'back_to',
+                                    subject: 'payment_information',
+                                }
+                            },
+                            context: getProductsContext(order.items),
+                        });
+                    }
+                </script>
+
+                <hr>
+                <h3 class="display-3">General settings</h3>
+                <ul class="list-group">
+                    <li class="list-group-item"><strong>appID:</strong> condenast-it</li>
+                    <li class="list-group-item"><strong>Prod2:</strong> c.abbonatiqui.it</li>
+                    <li class="list-group-item"><strong>QA:</strong> qc.abbonatiqui.it</li>
+                </ul>
+            </div>
+        </div>
+    </main>
+    <footer>
+        <div class="container">
+            <div class="row">
+                <div class="col-12 my-5">
+                    <!-- Footer Consent Button -->
+                    <!-- <button id="ot-sdk-btn" class="btn btn-dark mx-3 ot-sdk-show-settings">GESTISCI I COOKIES</button> -->
+                    <button class="btn btn-dark mx-3" id="fides-modal-link"> Manage Preferences </button>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+
+    <!-- ///////////////////////////////////////// -->
+    <!-- This is the SNOWPLOW implementation tests -->
+    <!-- ///////////////////////////////////////// -->
+    <script>
+        // Example product object
+        const product = {
+            sku: 'SKU789',
+            name: 'Jumper',
+            category: 'Clothes',
+            price: 199.99,
+            quantity: 1,
+        };
+
+        // Example order object
+        const order = {
+            id: 'TX12345',
+            total: 150.00,
+            tax: 10.00,
+            shipping: 5.00,
+            items: [
+                { sku: 'SKU123', name: 'Cool T-shirt', category: 'Apparel', price: 19.99, quantity: 2 },
+                { sku: 'SKU456', name: 'Sneakers', category: 'Shoes', price: 100.00, quantity: 1 },
+                { ...product },
+            ]
+        };
+
+
+        /////////////////////////////////
+        // Eccomerce events - SNOWPLOW //
+        /////////////////////////////////
+
+
+        function getProductsContext(items) {
+            // finished the transaction successfully.
+            // create the contexts array
+            let productsContext = [];
+            items.forEach(function (item, index) {
+                // for (let i = 0; i < item.quantity; i++) {
+                productsContext.push(getProduct(item));
+                // }
+            });
+
+            return productsContext;
+        }
+
+        function getProduct(item) {
+            return {
+                schema: 'iglu:com.condenast/product/jsonschema/2-0-1',
+                data: {
+                    product_id: item.sku,
+                    product_name: item.name,
+                    product_category: item.category,
+                    product_price: parseFloat(item.price),
+                    currency_code: 'EUR',
+                    product_brand: item.name,
+                    product_variant: 'digital', // 'print|digital|both', 
+                    // product_quantity: item.quantity, // this is not supported, 
+                    // product_type: 'subscription', // string
+                    // product_discount_perc: 'subscription',  // int
+                    // product_discount_amount: 'subscription',  // number
+                }
+            };
+        }
+    </script>
+
+    <!-- // Fides Consent Script -->
+    <script>
+        (function injectFidesScript() {
+            const fidesInjected = document.getElementById('fides-js') && document.getElementById('fides-js-loader');
+            if (fidesInjected) { return; };
+            // TODO: Set scriptSrc based on environment
+            // Script url should be environment based - prod url --> https://privacy.condenastdigital.com/fides.js
+            // property Id needs to be updated based on the domain
+
+            /*STAGING*/
+            const fidesHost = "https://stag.privacy.condenastdigital.com/fides.js"; // Staging 
+            const fidesPropertyId = 'FDS-K7RERG' // Staging abbonatique
+
+            // /*PROD*/
+            // const fidesHost = "https://privacy.condenastdigital.com/fides.js"; // Host 
+            // const fidesPropertyId = 'FDS-ZZS0ZA' // Need to be updated based on the domain
+
+            function formatFidesKey(key) {
+                if (key.includes('fides_')) {
+                    return key.replace('fides_', '');
+                }
+                return key;
+            }
+
+            function isAllowedKey(key) {
+                const allowedKeys = [
+                    'debug',
+                    'gpp',
+                    'cache_bust',
+                    'geolocation',
+                    'initialize',
+                    'property_id'
+                ];
+
+                return allowedKeys.includes(key);
+            }
+
+            function fidesParamValue(key, value) {
+                const bool = ['true', 'false'];
+                const geolocationRegEx = /^[a-zA-Z]{1,3}-?[a-zA-Z]{1,3}$/; // Expects a ISO 3166-2 code like EU or EU-ENG or EEA
+                const propertyIdRegEx = /^[a-zA-Z]{3}-[a-zA-Z0-9]{1,6}$/; // Expects a value like FDS-A0000X
+
+                const validValues = {
+                    cache_bust: () =>
+                        bool.includes(value) && value === 'true'
+                            ? Date.now().toString()
+                            : 'false',
+                    debug: () => '',
+                    geolocation: () => (geolocationRegEx.test(value) && value) || '',
+                    gpp: () => (bool.includes(value) && value) || '',
+                    initialize: () => (bool.includes(value) && value) || '',
+                    property_id: () => (propertyIdRegEx.test(value) && value) || ''
+                };
+                return validValues[key]() || '';
+            }
+
+            function getFidesParams(queryParams, fidesURLID) {
+                let fidesSearchParams = '';
+                if (queryParams) {
+                    const params = queryParams.replace('?', '').split('&') || [];
+                    params.forEach((param) => {
+                        const splitParam = param.split('=');
+                        const key = formatFidesKey(splitParam[0]);
+                        const isAllowed = key && isAllowedKey(key);
+                        if (key && isAllowed) {
+                            const value = fidesParamValue(key, splitParam[1]);
+                            if (key === 'property_id' && !value) {
+                                return;
+                            }
+                            const paramString = `${key}=${value}`;
+                            fidesSearchParams += !fidesSearchParams
+                                ? paramString
+                                : `&${paramString}`;
+                        }
+                    });
+                }
+                return fidesSearchParams;
+            }
+
+            const searchParams = `property_id=${fidesPropertyId}&${window.location.search.replace('?', '')}`;
+
+            const fidesParams = getFidesParams(searchParams, fidesHost);
+            const fidesSrcURL = `${fidesHost}?${fidesParams}`;
+
+            // Create the Fides script tag
+            const fidesScript = document.createElement('script');
+            fidesScript.src = fidesSrcURL;
+            fidesScript.defer = true;
+            fidesScript.id = 'fides-js';
+
+            // Create the Fides loader script
+            const fidesLoaderScript = document.createElement('script');
+            fidesLoaderScript.id = 'fides-js-loader';
+            fidesLoaderScript.innerHTML = `
+        !(function () {
+                window.fides_overrides = {
+                    fides_consent_flag_type: "boolean",
+                    fides_consent_non_applicable_flag_mode: "include"
+                };
+                window.ethycaEnabled = true;
+                window.addEventListener("FidesInitialized", function () {
+                    window.Fides.gtm();
+                    var e = window.Fides.experience?.experience_config?.id;
+                    if (e) document.body.classList.add(e);
+                });
+                })();
+            `;
+            // Append the Fides loader script to the head
+            document.head.appendChild(fidesLoaderScript);
+            // Append the Fides script tag to the head
+            document.head.appendChild(fidesScript);
+        })();
+    </script>
 </body>
+
 </html>

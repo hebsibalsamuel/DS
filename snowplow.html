@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snowplow Vendor Implementation</title>
+
+    <!-- <script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js" type="text/javascript" charset="UTF-8"
+        data-domain-script="3c987728-b6cb-466b-9476-68bb7f4798c5"></script> -->
+
+    <script type="text/javascript" async>
+        // ====== Fides helper functions =======
+        const fidesOtKeyEquivalencies = [
+            ['essential', 'C0001'],
+            ['analytics', 'C0002'],
+            ['functional', 'C0003'],
+            ['sales_sharing_targeted_advertising', 'C0004'],
+            ['social_media', 'C0005'],
+            ['audience_measurement', 'C0009'],
+        ];
+        const toReverseEquivalency = ([key, value]) => [value, key];
+
+        const bannerComponents = ['tcf_banner', 'banner'];
+
+        const wasFidesBannerShownGtmEvent = (event) =>
+            event?.type === 'FidesUIShown' &&
+            bannerComponents.includes(event.detail.extraDetails.servingComponent);
+
+        const fidesExtractConsentGroupsAsOtArray = () => {
+            const consented = (consentKey) => {
+                let keys = consentKey;
+                if (typeof consentKey === 'string') {
+                    keys = [consentKey];
+                }
+
+                const fidesInitialized = window.Fides?.initialized ?? false;
+                const consentFlagIsTrue = (value) => value;
+                const fidesDefaultConsent = { essential: true };
+                const toConsentFlags = (k) =>
+                    (window.Fides?.consent ?? fidesDefaultConsent)[k] ?? fidesInitialized;
+                return keys.map(toConsentFlags).every(consentFlagIsTrue);
+            };
+            const otConsentCategories = [];
+            const pushIfConsented = (otCategory, fidesKeys) => {
+                if (consented(fidesKeys)) {
+                    otConsentCategories.push(otCategory);
+                }
+            };
+
+            fidesOtKeyEquivalencies
+                .map(toReverseEquivalency)
+                .forEach(([otKey, fidesKey]) => pushIfConsented(otKey, fidesKey));
+            return otConsentCategories;
+        };
+        const consentPreferencesMapping = (event) => {
+            if (event.type === 'FidesUpdated') {
+                const lastFidesUIShownEvent = findLastdataLayerEvent('FidesUIShown');
+                let methodMap = {};
+                console.log("****lastFidesUIShownEvent", lastFidesUIShownEvent?.Fides?.extraDetails?.servingComponent)
+                if (
+                    lastFidesUIShownEvent?.Fides?.extraDetails?.servingComponent?.endsWith(
+                        'banner'
+                    ) ??
+                    false
+                ) {
+                    methodMap = {
+                        reject: 'Banner Reject All',
+                        accept: 'Banner Accept Cookies'
+                    };
+                } else {
+                    methodMap = {
+                        reject: 'Preferences Reject All',
+                        save: 'Preferences Save Settings',
+                        accept: 'Preferences Allow All'
+                    };
+                }
+                const consentMethod = event?.detail?.extraDetails?.consentMethod;
+                const eventLabel = methodMap[consentMethod] || null;
+                const consentGroups = fidesExtractConsentGroupsAsOtArray()
+                trackConsentPreferences(consentGroups, eventLabel);
+            }
+        };
+        //===== end of fides helper functions =====
+
+        //========== snowplow script injection ========
+        (function (p, l, o, w, i, n, g) {
+            if (!p[i]) {
+                p.GlobalSnowplowNamespace = p.GlobalSnowplowNamespace || [];
+                p.GlobalSnowplowNamespace.push(i);
+                p[i] = function () {
+                    (p[i].q = p[i].q || []).push(arguments)
+                };
+                p[i].q = p[i].q || [];
+                n = l.createElement(o);
+                g = l.getElementsByTagName(o)[0];
+                n.async = 1;
+                n.src = w;
+                g.parentNode.insertBefore(n, g)
+            }
+        }(window, document, "script", "https://globalservices.conde.digital/p77xzrbz9z.js", "snowplowCN"));
+
+        //========== snowplow initial config ===========
+        document.addEventListener('DOMContentLoaded', function () {
+            setupConsentObserver();
+        });
+
+        function setupConsentObserver() {
+            let snowplowInitialized = false;
+
+            const observer = new MutationObserver(() => {
+                if (window.Fides || window.OnetrustActiveGroups) {
+                    const consentGroups = getConsentGroups?.() || [];
+                    console.log("******consentGroups", consentGroups)
+                    if (consentGroups.length && !snowplowInitialized) {
+                        snowplowInitialized = true;
+                        console.log('**** Snowplow initialized');
+                        window.snowplowCN(function () {
+                            const snowplowConfig = {
+                                appId: 'gq-tw',
+                                contexts: {
+                                    performanceTiming: true,
+                                    clientHints: true,
+                                    webVitals: true,
+                                },
+                                anonymousTracking: {
+                                    withSessionTracking: true,
+                                    withServerAnonymisation: true,
+                                },
+                                stateStorageStrategy: 'cookieAndLocalStorage',
+                                discoverRootDomain: true,
+                                cookieSameSite:
+                                    window.location.protocol === 'https:' ? 'None' : 'Lax',
+                                cookieSecure: window.location.protocol === 'https:',
+                                eventMethod: 'post',
+                                postPath: '/com.condenast/yv8',
+                            };
+                            const consentGroups = getConsentGroups()
+                            const anonymousConfig = consentGroups.includes('C0004')
+                                ? {
+                                    anonymousTracking: false,
+                                    stateStorageStrategy: 'cookieAndLocalStorage'
+                                }
+                                : {};
+
+                            // app Id and collector URL needs to be altered as per the domain
+                            snowplowCN('newTracker', 'sp', 'https://c.gq.com.tw', { ...snowplowConfig, ...anonymousConfig });
+
+                            const pagePlugin = {
+                                pageTitle: () => {
+                                    return {
+                                        beforeTrack: (payloadBuilder) => {
+                                            payloadBuilder.add('page', window?.document?.title);
+                                            payloadBuilder.build();
+                                        }
+                                    };
+                                }
+                            };
+                            snowplowCN('addPlugin', pagePlugin, 'pageTitle');
+                            snowplowCN('addGlobalContexts', [
+                                userEntity,
+                                siteEntity,
+                                campaignEntity,
+                                contentEntity,
+                                pageEntity,
+                                referrerEntity,
+                                syndicationEntity,
+                            ]);
+                            snowplowCN('enableActivityTracking', {
+                                minimumVisitLength: 5,
+                                heartbeatDelay: 10,
+                            });
+                            snowplowCN('enableLinkClickTracking');
+                            snowplowCN('trackPageView');
+                            // tracking cmp_visible event
+                            if (window.OnetrustActiveGroups) {
+                                trackCmpBanner()
+                            }
+                        });
+
+                        observer.disconnect();
+                    }
+                }
+            });
+
+            // Ensure DOM is loaded before accessing document.body
+            observer.observe(document.body, { childList: true, subtree: true });
+
+            window.addEventListener('beforeunload', () => observer.disconnect());
+        }
+        // ===== Snowplow Consent Handling ======
+        var dataLayer = window.dataLayer || [];
+        var cmpLoaded = false
+        function handleConsentUpdate(event) {
+            const consentGroups = getConsentGroups();
+            if (userEntity && userEntity.data) {
+                console.log("*****newGroups", consentGroups)
+                userEntity.data.onetrust_active_groups = consentGroups;
+                userEntity.data.consent_banner_variant = window?.Fides ? 'fides' : null;
+                window.snowplowCN('removeGlobalContexts', [userEntity]);
+                window.snowplowCN('addGlobalContexts', [userEntity]);
+            }
+            // The domain and network user Id gets generated when user accepts C0004 cookie
+            const nonAnonymousConsentGroups = ['C0004'];
+            const hasNonAnonymousConsent = !!consentGroups.some(function (item) {
+                return nonAnonymousConsentGroups.includes(item)
+            });
+            if (hasNonAnonymousConsent) {
+                window.snowplowCN('disableAnonymousTracking', {
+                    stateStorageStrategy: 'cookieAndLocalStorage',
+                });
+            } else {
+                window.snowplowCN('enableAnonymousTracking', {
+                    options: { withServerAnonymisation: true, withSessionTracking: true },
+                    stateStorageStrategy: 'cookieAndLocalStorage',
+                });
+            }
+            if (window.OnetrustActiveGroups) {
+                // tracking consent preferences event
+                trackConsentPreferences(consentGroups)
+            }
+        };
+
+        window.addEventListener(
+            'OneTrustGroupsUpdated',
+            handleConsentUpdate
+        );
+        window.addEventListener('FidesInitialized', handleConsentUpdate);
+        window.addEventListener('FidesUpdated', handleConsentUpdate);
+        window.addEventListener('FidesUpdated', consentPreferencesMapping);
+        window.addEventListener('FidesUIShown', trackFidesBanner);
+
+        function getCookie(name) {
+            if (typeof document === 'undefined' || !name) {
+                return '';
+            }
+            const cookiePieces = document.cookie.split(/;\s?/);
+            let cookieValue = '';
+            for (let i = 0; i < cookiePieces.length; i++) {
+                const parts = cookiePieces[i].split('=');
+                if (parts[0] === name) {
+                    cookieValue = decodeURIComponent(parts.slice(1).join('='));
+                    break;
+                }
+            }
+            return cookieValue;
+        };
+
+        function getConsentGroups() {
+            let consentValues = [];
+            const otPayload = getCookie('OptanonConsent');
+            if (window.Fides) {
+                consentValues = fidesExtractConsentGroupsAsOtArray();
+                console.log("******Fides consentValues", consentValues)
+                return consentValues;
+            }
+            else if (window.OnetrustActiveGroups) {
+                const consentValues = window.OnetrustActiveGroups?.split(',')?.slice(1, -1);
+                return consentValues;
+            } else if (otPayload) {
+                const otGroupsMatch = otPayload.match(/groups=(.*)/g);
+                const otGroups = otGroupsMatch?.[0]
+                    ? otGroupsMatch[0].replace('groups=', '').split(',')
+                    : null;
+                const groupBuilder = [];
+                otGroups?.forEach((group) => {
+                    if (group.includes(':1')) {
+                        groupBuilder.push(group.replace(':1', ''));
+                    }
+                });
+                const consentValues = groupBuilder.join(',').split('&')[0].split(',');
+                return consentValues;
+            }
+            return consentValues;
+        };
+
+        // ===== Snowplow Consent Handling End =====
+
+        // we have global and adhoc entities. Global entities would be present in all the events. Adhoc entities
+        // would be present only in specific custom events. 
+        // Entity Details - Default entities with basic properties. User and Site are some example entities.
+        // Data Governance team can help in providing the details of the basic and custom events. 
+        var searchUrlParams = new URLSearchParams(window.location.search);
+        var campaignEntity = {
+            schema: 'iglu:com.condenast/campaign/jsonschema/4-0-1',
+            data: {
+                emailsource: searchUrlParams.get('esrc') || null,
+                itm_campaign: searchUrlParams.get('itm_campaign') || null,
+                itm_content: searchUrlParams.get('itm_content') || null,
+                itm_medium: searchUrlParams.get('itm_medium') || null,
+                itm_source: searchUrlParams.get('itm_source') || null,
+                mkt_brand: searchUrlParams.get('utm_brand') || null,
+                mkt_id: searchUrlParams.get('utm_id') || null,
+                mkt_mailing: searchUrlParams.get('utm_mailing') || null,
+                mkt_social_type: searchUrlParams.get('utm_social-type') || null,
+                mkt_test: searchUrlParams.get('utm_test') || null,
+            }
+        };
+        var contentEntity = {
+            schema: 'iglu:com.condenast/content/jsonschema/2-0-1',
+            data: {
+                content_language: dataLayer?.[0]?.content?.contentLang || null,
+                content_type: dataLayer?.[0]?.content?.contentType || null
+            }
+        };
+        var urlArr = window.location?.pathname?.split('/');
+        var pageEntity = {
+            schema: 'iglu:com.condenast/page/jsonschema/6-0-0',
+            data: {
+                path_level_1: urlArr[1] || '',
+                path_level_2: urlArr[2] || '',
+                path_level_3: urlArr[3] || '',
+                path_level_4: urlArr[4] || '',
+                tab_active: window.document.visibilityState === 'visible',
+                canonical_url: dataLayer?.[0]?.page?.canonical || null,
+                ecommerce_targeter: searchUrlParams.get('source') || null,
+            }
+        };
+        var referrerEntity = {
+            schema: 'iglu:com.condenast/referrer/jsonschema/2-0-1',
+            data: {
+                refr_domain: document.referrer || ''
+            }
+        };
+        var userEntity = {
+            schema: 'iglu:com.condenast/user/jsonschema/11-0-0',
+            data: {
+                'browser': window?.navigator?.appName || null,
+                'browser_version': window?.navigator?.appVersion || null,
+                'is_logged_in': dataLayer?.[0]?.user?.amguuid ? true : false,
+                'local_visit_hour': new Date().getHours(),
+                'time_zone_offset': parseInt(new Date().getTimezoneOffset() / 60),
+                'onetrust_active_groups': getConsentGroups(),
+                'consent_banner_variant': window.Fides ? 'fides' : null,
+            }
+        }
+        var siteEntity = {
+            schema: 'iglu:com.condenast/site/jsonschema/2-0-1',
+            data: {
+                org_app_id: dataLayer?.[0]?.site?.orgAppId || null,
+                org_id: dataLayer?.[0]?.site?.orgId || null,
+                site_app_version: dataLayer?.[0]?.site?.appVersion || null,
+                site_data_source: dataLayer?.[0]?.site?.dataSource || null,
+                site_env: dataLayer?.[0]?.site?.env || null,
+                site_section: dataLayer?.[0]?.site?.section || null,
+                site_subsection: dataLayer?.[0]?.site?.subsection || null,
+                site_subsection_2: dataLayer?.[0]?.site?.subsection2 || null,
+            }
+        };
+        var syndicationEntity = {
+            schema: 'iglu:com.condenast/syndication/jsonschema/3-0-1',
+            data: {
+                is_syndication_content: dataLayer?.[0]?.syndication?.content || null
+            }
+        };
+        // There might be adhoc entities also which would be expected to be added for specific events
+        // Data Governance team will provide those details
+
+        function trackCmpBanner() {
+            if (
+                !getCookie('OptanonAlertBoxClosed') &&
+                window.OneTrust &&
+                window.OneTrust.GetDomainData
+            ) {
+                const { IsBannerLoaded, ShowAlertNotice } =
+                    window.OneTrust.GetDomainData();
+                if (ShowAlertNotice && !cmpLoaded) {
+                    snowplowCN(`trackCmpVisible:sp`, {
+                        /* Using the performance.now API to retrieve the elapsed time from the page navigation. */
+                        elapsedTime: performance.now(),
+                    });
+                    cmpLoaded = true;
+                }
+            }
+        }
+        function trackFidesBanner(event) {
+            if (window.Fides) {
+                const bannerShownEvents = wasFidesBannerShownGtmEvent(event)
+                if (bannerShownEvents && !cmpLoaded) {
+                    snowplowCN(`trackCmpVisible:sp`, {
+                        elapsedTime: event.timeStamp
+                    });
+                    cmpLoaded = true;
+                }
+            }
+        }
+
+        function trackConsentPreferences(consentGroups, eventLabel = null) {
+            let optanonAction;
+            if (!eventLabel) {
+                const optEvent = findLastOTAction();
+                if (optEvent) {
+                    optanonAction =
+                        optEvent?.[2]?.optanonAction || optEvent?.optanonAction;
+                }
+            }
+            const clickInfoEntity = [
+                {
+                    schema: 'iglu:com.condenast/click_info/jsonschema/2-0-0',
+                    data: {
+                        click_text: eventLabel || optanonAction
+                    }
+                }
+            ];
+
+            const enhancedConsent = {
+                consentScopes: consentGroups,
+                basisForProcessing: 'consent',
+                consentUrl: window.location.href,
+                consentVersion: '1.0',
+                domainsApplied: [window.location.origin],
+                gdprApplies: true,
+                context: clickInfoEntity
+            };
+            switch (eventLabel || optanonAction) {
+                case 'Banner Accept Cookies':
+                case 'Preferences Allow All':
+                    snowplowCN('trackConsentAllow:sp', enhancedConsent);
+                    break;
+                case 'Banner Reject All':
+                case 'Preferences Reject All':
+                case 'Banner - Continue without Accepting':
+                    snowplowCN('trackConsentDeny:sp', enhancedConsent);
+                    break;
+                case 'Preferences Save Settings':
+                    snowplowCN('trackConsentSelected:sp', enhancedConsent);
+                    break;
+                default:
+                    break;
+            }
+        }
+        function findLastOTAction() {
+            let dataLayer = window?.dataLayer ?? [];
+            for (let i = dataLayer.length - 1; i >= 0; i--) {
+                const event = dataLayer[i];
+                if (event?.[2]?.optanonAction || event?.optanonAction) {
+                    return event;
+                }
+            }
+            return null; // Return null if no matching element is found
+        }
+        function findLastdataLayerEvent(type) {
+            let dataLayer = window?.dataLayer ?? [];
+            for (let i = dataLayer.length - 1; i >= 0; i--) {
+                const event = dataLayer[i];
+                console.log("*****event*****", event);
+                if (event?.event === type) {
+                    return event;
+                }
+            }
+            return null;
+        }     
+    </script>
+
+</head>
+
+<body>
+    <!-- Fides script Injection -->
+    <script>
+        // Prevent duplicate injection
+        // Help doc: https://docs.google.com/document/d/1S8d-vYKypM3w4qic4nCYx9lk7UDFlgVPWLgktpyiUjM/edit?tab=t.0
+        (function injectFidesScript() {
+
+            const fidesInjected = document.getElementById('fides-js') && document.getElementById('fides-js-loader');
+            if (fidesInjected) { return; };
+            // TODO: Set scriptSrc based on environment
+            // Script url should be environment based - prod url --> https://privacy.condenastdigital.com/fides.js
+            // property Id needs to be updated based on the domain
+
+            const fidesHost = "https://privacy.condenastdigital.com/fides.js"; // Host 
+            const fidesPropertyId = 'FDS-KM9V8P' // Need to be updated based on the domain
+            // FDS-OZF7TI - prod - shop.condenast.de
+            // FDS-NKY9HQ -ES - eventos.condenast.es
+            // FDS-KM9V8P - stag - shop.condenast.de
+            function formatFidesKey(key) {
+                if (key.includes('fides_')) {
+                    return key.replace('fides_', '');
+                }
+                return key;
+            }
+
+            function isAllowedKey(key) {
+                const allowedKeys = [
+                    'debug',
+                    'gpp',
+                    'cache_bust',
+                    'geolocation',
+                    'initialize',
+                    'property_id'
+                ];
+
+                return allowedKeys.includes(key);
+            }
+
+            function fidesParamValue(key, value) {
+                const bool = ['true', 'false'];
+                const geolocationRegEx = /^[a-zA-Z]{1,3}-?[a-zA-Z]{1,3}$/; // Expects a ISO 3166-2 code like EU or EU-ENG or EEA
+                const propertyIdRegEx = /^[a-zA-Z]{3}-[a-zA-Z0-9]{1,6}$/; // Expects a value like FDS-A0000X
+
+                const validValues = {
+                    cache_bust: () =>
+                        bool.includes(value) && value === 'true'
+                            ? Date.now().toString()
+                            : 'false',
+                    debug: () => '',
+                    geolocation: () => (geolocationRegEx.test(value) && value) || '',
+                    gpp: () => (bool.includes(value) && value) || '',
+                    initialize: () => (bool.includes(value) && value) || '',
+                    property_id: () => (propertyIdRegEx.test(value) && value) || ''
+                };
+                return validValues[key]() || '';
+            }
+
+            function getFidesParams(queryParams, fidesURLID) {
+                let fidesSearchParams = '';
+                if (queryParams) {
+                    const params = queryParams.replace('?', '').split('&') || [];
+                    params.forEach((param) => {
+                        const splitParam = param.split('=');
+                        const key = formatFidesKey(splitParam[0]);
+                        const isAllowed = key && isAllowedKey(key);
+                        if (key && isAllowed) {
+                            const value = fidesParamValue(key, splitParam[1]);
+                            if (key === 'property_id' && !value) {
+                                return;
+                            }
+                            const paramString = `${key}=${value}`;
+                            fidesSearchParams += !fidesSearchParams
+                                ? paramString
+                                : `&${paramString}`;
+                        }
+                    });
+                }
+                return fidesSearchParams;
+            }
+
+            const searchParams = `property_id=${fidesPropertyId}&${window.location.search.replace('?', '')}`;
+
+            const fidesParams = getFidesParams(searchParams, fidesHost);
+            const fidesSrcURL = `${fidesHost}?${fidesParams}`;
+
+            // Create the Fides script tag
+            const fidesScript = document.createElement('script');
+            fidesScript.src = fidesSrcURL;
+            fidesScript.defer = true;
+            fidesScript.id = 'fides-js';
+
+            // Create the Fides loader script
+            const fidesLoaderScript = document.createElement('script');
+            fidesLoaderScript.id = 'fides-js-loader';
+            fidesLoaderScript.innerHTML = `
+            !(function () {
+                    window.fides_overrides = {
+                        fides_consent_flag_type: "boolean",
+                        fides_consent_non_applicable_flag_mode: "include"
+                    };
+                    window.ethycaEnabled = true;
+                    window.addEventListener("FidesInitialized", function () {
+                        window.Fides.gtm();
+                        var e = window.Fides.experience?.experience_config?.id;
+                        if (e) document.body.classList.add(e);
+                    });
+                    })();
+                `;
+            // Append the Fides loader script to the head
+            document.head.appendChild(fidesLoaderScript);
+            // Append the Fides script tag to the head
+            document.head.appendChild(fidesScript);
+        })();
+    </script>
+    <!-- End of Fides script Injection -->
+    <!-- Footer Consent Button -->
+    <button id="fides-modal-link">
+        Manage Preferences
+    </button>
+</body>
+
+</html>

@@ -65,3 +65,40 @@ var countGoodSubstrings = function (s) {
 };
 console.log(countGoodSubstrings('xyzzaz'))
 console.log(countGoodSubstrings('aababcabc'))
+
+// More easy approach
+var countGoodSubstrings = function (s) {
+    let count = 0;
+
+    // Loop through the string, only until the third last character
+    for (let i = 0; i <= s.length - 3; i++) {
+        const substr = s.slice(i, i + 3); // Get substring of length 3
+        const set = new Set(substr);     // Create a set to check uniqueness
+
+        // If all characters are unique, the set size will be 3
+        if (set.size === 3) {
+            count++;
+        }
+    }
+
+    return count;
+};
+
+// Without set and slice
+var countGoodSubstrings = function (s) {
+    let count = 0;
+
+    for (let i = 0; i <= s.length - 3; i++) {
+        // Extract the 3 characters manually
+        const a = s[i];
+        const b = s[i + 1];
+        const c = s[i + 2];
+
+        // Check if all 3 characters are different
+        if (a !== b && b !== c && a !== c) {
+            count++;
+        }
+    }
+
+    return count;
+};
